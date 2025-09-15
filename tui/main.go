@@ -1,7 +1,14 @@
 package main
 
-import "fmt"
+import (
+	"flag"
+	"fmt"
+)
 
 func main() {
-	fmt.Println("This is the TUI")
+
+	flag.Parse()
+	fmt.Println(*send)
+	fmt.Println(*recieve)
+
 }
