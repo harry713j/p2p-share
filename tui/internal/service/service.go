@@ -2,8 +2,8 @@ package service
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -31,7 +31,15 @@ type RegisterResp struct {
 	Timeout time.Duration `json:"timeout"`
 }
 
-func sendFile(filepath string, port string) error {
+type QueryResp struct {
+	FileName string `json:"file_name"`
+	FileSize int64  `json:"file_size"`
+	IP       string `json:"ip"`
+	Port     string `json:"port"`
+	Checksum []byte `json:"checksum"`
+}
+
+func SendFile(filepath string, port string) error {
 	// open the file
 	file, err := os.Open(filepath)
 
@@ -101,7 +109,6 @@ func sendFile(filepath string, port string) error {
 		return err
 	}
 
-	// send metadata first to the reciever
 	listener, err := net.Listen("tcp", ":"+port) // create a socket
 
 	if err != nil {
@@ -121,12 +128,73 @@ func sendFile(filepath string, port string) error {
 	defer conn.Close()
 
 	// send the file data in chunks
+	buff := make([]byte, 4096) // 4KB
+
+	for {
+		n, err := file.Read(buff)
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return err
+		}
+
+		numOfBytesWritten, err := conn.Write(buff[:n])
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%d bytes written to peer", numOfBytesWritten)
+	}
 
 	return nil
 }
 
-func receiveFile(addr, port string) error {
-	conn, err := net.Dial("tcp", addr+":"+port)
+func ReceiveFile(code string) error {
+
+	if len(code) != 6 {
+		return errors.New("invalid code")
+	}
+
+	// get the file metadata from server
+	resp, err := http.Get(config.ServerURL + "/session?code=" + code)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	respData, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		return err
+	}
+
+	var queryResp QueryResp
+
+	err = json.Unmarshal(respData, &queryResp)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Downlaod Size: %.2fKB", float64(queryResp.FileSize))
+	fmt.Println("Download started")
+	err = download(queryResp.IP, queryResp.Port, queryResp.FileName)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func download(addr, port, fileName string) error {
+	conn, err := net.Dial("tcp", net.JoinHostPort(addr, port))
 
 	if err != nil {
 		return err
@@ -134,34 +202,34 @@ func receiveFile(addr, port string) error {
 
 	defer conn.Close()
 
-	var metaLen int32
-	binary.Read(conn, binary.BigEndian, &metaLen) // read the 4kbyte
-
-	metaBytes := make([]byte, metaLen)
-	io.ReadFull(conn, metaBytes) // read exactly 4KB
-
-	var metadata Metadata
-	json.Unmarshal(metaBytes, &metadata)
-
-	// create output file
-	outFIle, err := os.Create(metadata.FileName)
+	file, err := os.Create(fileName)
 
 	if err != nil {
 		return err
 	}
 
-	defer outFIle.Close()
+	defer file.Close()
 
-	// read 4KB at a time
-	buf := make([]byte, 4096)
-	var received int64
+	buff := make([]byte, 4096)
 
-	if received < metadata.FileSize {
-		n, _ := conn.Read(buf)
+	for {
+		n, err := conn.Read(buff)
 
-		outFIle.Write(buf[:n])
-		received += int64(n)
-		fmt.Printf("\rProgress: %.2f%%", float64(received)/float64(metadata.FileSize)*100)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return err
+		}
+
+		numOfBytesWritten, err := file.Write(buff[:n])
+
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%d bytes written to file", numOfBytesWritten)
 	}
 
 	return nil

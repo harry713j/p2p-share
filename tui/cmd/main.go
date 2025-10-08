@@ -11,6 +11,6 @@ func main() {
 
 	flag.Parse()
 	fmt.Println(*command.Send)
-	fmt.Println(*command.Recieve)
+	fmt.Println(*command.Receive)
 
 }
