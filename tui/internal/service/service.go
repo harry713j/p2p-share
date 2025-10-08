@@ -1,16 +1,32 @@
-package main
+package service
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
+	"time"
+
+	"github.com/harry713j/p2p-share/tui/internal/config"
 )
 
-// dynamic/private port range (49152–65535)
-// TODO: I need to call the server for creating the session details
+type Metadata struct {
+	FileName  string    `json:"file_name"`
+	FileSize  int64     `json:"file_size"`
+	IP        string    `json:"ip"`
+	Port      string    `json:"port"`
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Checksum  string    `json:"checksum"`
+}
+
+type registerResp struct {
+	Message string `json:"message"`
+}
 
 func sendFile(filepath string, port string) error {
 	// open the file
@@ -30,8 +46,42 @@ func sendFile(filepath string, port string) error {
 	}
 
 	metadata := Metadata{
-		FileName: info.Name(),
-		FileSize: info.Size(),
+		FileName:  info.Name(),
+		FileSize:  info.Size(),
+		Port:      port,
+		IP:        "",
+		ExpiresAt: time.Now().Add(5 * time.Minute),
+		Code:      "",
+		Checksum:  "",
+	}
+
+	data, err := json.Marshal(metadata)
+
+	if err != nil {
+		return err
+	}
+
+	// send to the server
+	resp, err := http.Post(config.ServerURL+"/register", "application/json", bytes.NewBuffer(data))
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	respData, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		return err
+	}
+
+	var srvResp registerResp
+
+	err = json.Unmarshal(respData, &srvResp)
+
+	if err != nil {
+		return err
 	}
 
 	// send metadata first to the reciever
@@ -41,6 +91,8 @@ func sendFile(filepath string, port string) error {
 		return err
 	}
 
+	fmt.Printf("Code: %v\n", metadata.Code)
+	fmt.Printf("Timeout Duration: %v\n", time.Until(metadata.ExpiresAt))
 	fmt.Printf("Waiting for reciever on port %v...\n", port)
 
 	conn, err := listener.Accept() // listen for connection

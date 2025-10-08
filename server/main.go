@@ -14,7 +14,7 @@ type Key string
 type Session struct {
 	IP   string `json:"ip"`
 	Port string `json:"port"`
-	Key  Key    `json:"key"` // public key for encrypt or decrypt the file (currently lets make it nil)
+	Key  *Key   `json:"key"` // public key for encrypt or decrypt the file (currently lets make it nil)
 }
 
 var (
