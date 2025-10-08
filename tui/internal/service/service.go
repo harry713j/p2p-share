@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/harry713j/p2p-share/tui/internal/config"
+	"github.com/harry713j/p2p-share/tui/internal/util"
 )
 
 type Metadata struct {
@@ -21,11 +22,13 @@ type Metadata struct {
 	Port      string    `json:"port"`
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expires_at"`
-	Checksum  string    `json:"checksum"`
+	Checksum  []byte    `json:"checksum"`
 }
 
-type registerResp struct {
-	Message string `json:"message"`
+type RegisterResp struct {
+	Message string        `json:"message"`
+	Code    string        `json:"code"`
+	Timeout time.Duration `json:"timeout"`
 }
 
 func sendFile(filepath string, port string) error {
@@ -45,14 +48,28 @@ func sendFile(filepath string, port string) error {
 		return err
 	}
 
+	u := util.NewUtility()
+	code := u.GetRandomCode(6)
+
+	checksum, err := u.GenerateChecksum(file)
+	if err != nil {
+		return err
+	}
+
+	localIp, err := u.GetLocalIP()
+
+	if err != nil {
+		return err
+	}
+
 	metadata := Metadata{
 		FileName:  info.Name(),
 		FileSize:  info.Size(),
 		Port:      port,
-		IP:        "",
+		IP:        localIp.String(),
 		ExpiresAt: time.Now().Add(5 * time.Minute),
-		Code:      "",
-		Checksum:  "",
+		Code:      code,
+		Checksum:  checksum,
 	}
 
 	data, err := json.Marshal(metadata)
@@ -76,7 +93,7 @@ func sendFile(filepath string, port string) error {
 		return err
 	}
 
-	var srvResp registerResp
+	var srvResp RegisterResp
 
 	err = json.Unmarshal(respData, &srvResp)
 
@@ -91,8 +108,8 @@ func sendFile(filepath string, port string) error {
 		return err
 	}
 
-	fmt.Printf("Code: %v\n", metadata.Code)
-	fmt.Printf("Timeout Duration: %v\n", time.Until(metadata.ExpiresAt))
+	fmt.Printf("Code: %v\n", srvResp.Code)
+	fmt.Printf("Timeout Duration: %v\n", srvResp.Timeout)
 	fmt.Printf("Waiting for reciever on port %v...\n", port)
 
 	conn, err := listener.Accept() // listen for connection
@@ -103,26 +120,7 @@ func sendFile(filepath string, port string) error {
 
 	defer conn.Close()
 
-	// send the metadata
-	metaBytes, _ := json.Marshal(metadata)
-	metaLen := int32(len(metaBytes))
-
-	binary.Write(conn, binary.BigEndian, metaLen) // 4bytes by big-endian
-	conn.Write(metaBytes)
-
-	// send the file in chunks
-	buf := make([]byte, 4096) // send 4KB chunks
-
-	for {
-		n, err := file.Read(buf)
-
-		if err == io.EOF {
-			break
-		}
-
-		conn.Write(buf[:n])
-
-	}
+	// send the file data in chunks
 
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"io"
 	"math/rand"
+	"net"
 	"os"
 )
 
@@ -60,4 +61,18 @@ func (u Utility) swap(arr []rune, s, e int) {
 // Generate dynamic/private port range (49152–65535)
 func (u Utility) GetDynamicPort() int {
 	return 49152 + rand.Intn(65535-49152)
+}
+
+// Get the Local IP address
+func (u Utility) GetLocalIP() (net.IP, error) {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP, nil
 }
