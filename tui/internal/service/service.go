@@ -22,7 +22,7 @@ type Metadata struct {
 	Port      string    `json:"port"`
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expires_at"`
-	Checksum  []byte    `json:"checksum"`
+	Checksum  string    `json:"checksum"`
 }
 
 type RegisterResp struct {
@@ -36,7 +36,7 @@ type QueryResp struct {
 	FileSize int64  `json:"file_size"`
 	IP       string `json:"ip"`
 	Port     string `json:"port"`
-	Checksum []byte `json:"checksum"`
+	Checksum string `json:"checksum"`
 }
 
 func SendFile(filepath string, port string) error {
@@ -154,14 +154,12 @@ func SendFile(filepath string, port string) error {
 }
 
 func ReceiveFile(code string) error {
-
 	if len(code) != 6 {
 		return errors.New("invalid code")
 	}
 
 	// get the file metadata from server
 	resp, err := http.Get(config.ServerURL + "/session?code=" + code)
-
 	if err != nil {
 		return err
 	}
@@ -169,13 +167,11 @@ func ReceiveFile(code string) error {
 	defer resp.Body.Close()
 
 	respData, err := io.ReadAll(resp.Body)
-
 	if err != nil {
 		return err
 	}
 
 	var queryResp QueryResp
-
 	err = json.Unmarshal(respData, &queryResp)
 
 	if err != nil {
@@ -184,7 +180,7 @@ func ReceiveFile(code string) error {
 
 	fmt.Printf("Downlaod Size: %.2fKB", float64(queryResp.FileSize))
 	fmt.Println("Download started")
-	err = download(queryResp.IP, queryResp.Port, queryResp.FileName)
+	err = download(queryResp.IP, queryResp.Port, queryResp.FileName, queryResp.Checksum)
 
 	if err != nil {
 		return err
@@ -193,9 +189,8 @@ func ReceiveFile(code string) error {
 	return nil
 }
 
-func download(addr, port, fileName string) error {
+func download(addr, port, fileName, remoteChecksum string) error {
 	conn, err := net.Dial("tcp", net.JoinHostPort(addr, port))
-
 	if err != nil {
 		return err
 	}
@@ -203,7 +198,6 @@ func download(addr, port, fileName string) error {
 	defer conn.Close()
 
 	file, err := os.Create(fileName)
-
 	if err != nil {
 		return err
 	}
@@ -214,7 +208,6 @@ func download(addr, port, fileName string) error {
 
 	for {
 		n, err := conn.Read(buff)
-
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -224,12 +217,22 @@ func download(addr, port, fileName string) error {
 		}
 
 		numOfBytesWritten, err := file.Write(buff[:n])
-
 		if err != nil {
 			return err
 		}
 
 		fmt.Printf("%d bytes written to file", numOfBytesWritten)
+	}
+	//verify the check sum
+	u := util.NewUtility()
+	localChecksum, err := u.GenerateChecksum(file)
+	if err != nil {
+		return err
+	}
+
+	if localChecksum != remoteChecksum {
+		// remove the file
+		return fmt.Errorf("❌ Checksum mismatch, file corrupted")
 	}
 
 	return nil

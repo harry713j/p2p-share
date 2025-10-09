@@ -2,6 +2,7 @@ package util
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"math/rand"
 	"net"
@@ -37,12 +38,12 @@ func (u *Utility) GetRandomCode(size int) string {
 }
 
 // Generate Hash from the file value
-func (u *Utility) GenerateChecksum(file *os.File) ([]byte, error) {
+func (u *Utility) GenerateChecksum(file *os.File) (string, error) {
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return nil, err
+		return "", err
 	}
-	checksum := hash.Sum(nil)
+	checksum := fmt.Sprintf("%x", hash.Sum(nil))
 
 	return checksum, nil
 }

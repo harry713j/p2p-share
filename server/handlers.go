@@ -15,7 +15,7 @@ type Session struct {
 	Port      string    `json:"port"`
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expires_at"`
-	Checksum  []byte    `json:"checksum"`
+	Checksum  string    `json:"checksum"`
 }
 
 type RegisterSessionResp struct {
@@ -29,7 +29,7 @@ type QueryResp struct {
 	FileSize int64  `json:"file_size"`
 	IP       string `json:"ip"`
 	Port     string `json:"port"`
-	Checksum []byte `json:"checksum"`
+	Checksum string `json:"checksum"`
 }
 
 var (
